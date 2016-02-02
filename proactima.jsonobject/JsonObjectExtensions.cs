@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Newtonsoft.Json.Linq;
 using proactima.jsonobject.common;
 
 namespace proactima.jsonobject
@@ -20,6 +19,7 @@ namespace proactima.jsonobject
             var cloned = new JsonObject();
             original
                 .Where(kvp => legalFieldNames.Any(field => string.Equals(field, kvp.Key)))
+                .ToList()
                 .ForEach(kvp => cloned.Add(kvp.Key, kvp.Value));
 
             return cloned;
@@ -136,13 +136,7 @@ namespace proactima.jsonobject
         /// <returns>Returns null if key missing.</returns>
         public static TOut GetValue<TOut>(this JsonObject obj, string key) where TOut : class
         {
-            var value = obj.GetValue(key) as TOut;
-
-            if (value == null)
-                throw new InvalidOperationException(String.Format("Cannot convert the value of '{0}' to '{1}'", key,
-                    typeof (TOut)));
-
-            return value;
+            return SharedExtensions.GetValue<TOut>(obj, key);
         }
 
         /// <summary>
@@ -153,12 +147,7 @@ namespace proactima.jsonobject
         /// <returns>Returns string.empty if key is missing.</returns>
         public static string GetStringValueOrEmpty(this JsonObject obj, string key)
         {
-            var lowerKey = key.ToLowerInvariant();
-
-            if (!obj.ContainsKey(lowerKey))
-                return String.Empty;
-
-            return obj[lowerKey] == null ? String.Empty : obj[lowerKey].ToString();
+            return SharedExtensions.GetStringValueOrEmpty(obj, key);
         }
 
         /// <summary>
@@ -169,7 +158,7 @@ namespace proactima.jsonobject
         /// <returns></returns>
         public static bool GetBoolOrFalse(this JsonObject obj, string key)
         {
-            return obj.GetValueOrDefault<bool>(key);
+            return SharedExtensions.GetValueOrDefault<bool>(obj, key);
         }
 
         /// <summary>
@@ -181,15 +170,7 @@ namespace proactima.jsonobject
         /// <returns>DateTime, default or parsed</returns>
         public static DateTime GetDateTimeOrDefault(this JsonObject obj, string key)
         {
-            var dateAsString = obj.GetStringValueOrEmpty(key);
-            if (String.IsNullOrEmpty(dateAsString))
-                return default(DateTime);
-
-            DateTime parsedDateTime;
-            var couldParse = DateTime.TryParse(dateAsString, out parsedDateTime);
-            return couldParse
-                ? parsedDateTime
-                : default(DateTime);
+            return SharedExtensions.GetDateTimeOrDefault(obj, key);
         }
 
         /// <summary>
@@ -202,58 +183,20 @@ namespace proactima.jsonobject
         /// <returns>Returns a long or 0 if key is missing</returns>
         public static long GetNumberOrDefault(this JsonObject obj, string key)
         {
-            var lowerKey = key.ToLowerInvariant();
-            const long defaultValue = default(long);
-
-            if (!obj.ContainsKey(lowerKey))
-                return defaultValue;
-
-            var value = obj[lowerKey];
-
-            if (value is int)
-                return (int) obj[lowerKey];
-
-            if (value is long)
-                return (long) obj[lowerKey];
-
-            if (value is string)
-            {
-                long parsedValue;
-                if (Int64.TryParse(value.ToString(), out parsedValue))
-                    return parsedValue;
-            }
-
-            return defaultValue;
-        }
-
-        private static T GetValueOrDefault<T>(this JsonObject obj, string key) where T : struct
-        {
-            var lowerKey = key.ToLowerInvariant();
-
-            if (!obj.ContainsKey(lowerKey))
-                return default(T);
-
-            return obj[lowerKey] == null ? default(T) : (T) obj[lowerKey];
+            return SharedExtensions.GetNumberOrDefault(obj, key);
         }
 
         /// <summary>
-        /// Gets all the JsonObjects in the results collection
+        /// Gets a ulong from a JsonObject.
+        /// <para>The value being retrieved can be stored in the JsonObject as an int, long, ulong or string.</para>
+        /// <para>If the key is missing or the value is some other type, 0 is returned.</para>
         /// </summary>
-        /// <param name="jsonObj"></param>
-        /// <returns>All JsonObjects as an array. Returns empty array if no results present</returns>
-        public static JsonObject[] Results(this JsonObject jsonObj)
+        /// <param name="obj">The object you want to get the value from</param>
+        /// <param name="key">The key you want the value from</param>
+        /// <returns>Returns a ulong or 0 if key is missing</returns>
+        public static ulong GetULongOrDefault(this JsonObject obj, string key)
         {
-            if (!jsonObj.ContainsKey(Constants.Results)) return new JsonObject[0];
-
-            var results = jsonObj[Constants.Results];
-            if (results is JsonObject)
-                return new[] {results as JsonObject};
-            if (results is JsonObject[])
-                return results as JsonObject[];
-            if (results is IEnumerable<JsonObject>)
-                return (results as IEnumerable<JsonObject>).ToArray();
-
-            return new JsonObject[0];
+            return SharedExtensions.GetULongOrDefault(obj, key);
         }
 
         /// <summary>
@@ -270,6 +213,16 @@ namespace proactima.jsonobject
         }
 
         /// <summary>
+        /// Gets all the JsonObjects in the results collection
+        /// </summary>
+        /// <param name="jsonObj"></param>
+        /// <returns>All JsonObjects as an array. Returns empty array if no results present</returns>
+        public static JsonObject[] Results(this JsonObject jsonObj)
+        {
+            return SharedExtensions.Results(jsonObj);
+        }
+
+        /// <summary>
         /// Returns values from reference.
         /// </summary>
         /// <param name="obj"></param>
@@ -278,18 +231,7 @@ namespace proactima.jsonobject
         // ReSharper disable once ReturnTypeCanBeEnumerable.Global
         public static string[] GetValuesFromReference(this JsonObject obj, string fieldName)
         {
-            if (!obj.ContainsKey(fieldName)) return new string[0];
-
-            var innerObject = obj[fieldName] as JsonObject;
-            if (innerObject != null) return innerObject.GetValuesFromObject();
-
-            var innerJObject = obj[fieldName] as JObject;
-            if (innerJObject != null)
-                innerObject = JsonObject.FromJObject(innerJObject);
-
-            return (innerObject == null)
-                ? new string[0]
-                : innerObject.GetValuesFromObject();
+            return SharedExtensions.GetValuesFromReference(obj, fieldName);
         }
 
         /// <summary>
@@ -300,17 +242,7 @@ namespace proactima.jsonobject
         /// <returns></returns>
         public static string[] GetValuesFromObject(this JsonObject obj)
         {
-            if (!obj.ContainsKey(Constants.ReferenceValues)) return new string[0];
-
-            var values = obj[Constants.ReferenceValues] as string[];
-
-            if (values != null)
-                return values;
-
-            var valuesAsIEnumerable = obj[Constants.ReferenceValues] as IEnumerable<string>;
-            return valuesAsIEnumerable != null
-                ? valuesAsIEnumerable.ToArray()
-                : new string[0];
+            return SharedExtensions.GetValuesFromObject(obj);
         }
 
         /// <summary>
@@ -318,10 +250,7 @@ namespace proactima.jsonobject
         /// </summary>
         public static string GetFirstValueOrEmptyFromReference(this JsonObject obj, string fieldName)
         {
-            if (!obj.ContainsKey(fieldName)) return String.Empty;
-
-            var objValue = obj.GetValuesFromReference(fieldName).FirstOrDefault();
-            return objValue ?? String.Empty;
+            return SharedExtensions.GetFirstValueOrEmptyFromReference(obj, fieldName);
         }
 
         /// <summary>
@@ -332,23 +261,15 @@ namespace proactima.jsonobject
         /// <returns>Returns string.empty on missing</returns>
         public static string GetTypeFromReference(this JsonObject obj, string fieldName)
         {
-            var innerObject = obj[fieldName] as JsonObject;
-            if (innerObject != null) return innerObject[Constants.ReferenceType] as string ?? String.Empty;
-
-            var innerJObject = obj[fieldName] as JObject;
-            innerObject = JsonObject.FromJObject(innerJObject);
-
-            return (innerObject == null)
-                ? String.Empty
-                : innerObject[Constants.ReferenceType] as string ?? String.Empty;
+            return SharedExtensions.GetTypeFromReference(obj, fieldName);
         }
 
         /// <summary>
         /// Checks if JsonObject contains reference keys
         /// </summary>
-        public static bool ContainsReferenceFields(this JsonObject jsonObj)
+        public static bool ContainsReferenceFields(this IEnumerable<KeyValuePair<string, object>> jsonObj)
         {
-            return jsonObj.Any(d => d.Key.EndsWith(Constants.IdPostFix));
+            return SharedExtensions.ContainsReferenceFields(jsonObj);
         }
 
         /// <summary>
@@ -409,14 +330,15 @@ namespace proactima.jsonobject
         public static JsonObject Clone(this JsonObject json)
         {
             var cloned = new JsonObject();
-            json.ForEach(kvp =>
-            {
-                var o = kvp.Value as JsonObject;
-                if (o != null)
-                    cloned[kvp.Key] = o.Clone();
-                else
-                    cloned[kvp.Key] = kvp.Value;
-            });
+            json.ToList()
+                .ForEach(kvp =>
+                {
+                    var o = kvp.Value as JsonObject;
+                    if (o != null)
+                        cloned[kvp.Key] = o.Clone();
+                    else
+                        cloned[kvp.Key] = kvp.Value;
+                });
 
             return cloned;
         }
@@ -426,17 +348,7 @@ namespace proactima.jsonobject
         /// </summary>
         public static IList<TOut> GetList<TOut>(this JsonObject obj, string key) where TOut : class
         {
-            if (String.IsNullOrEmpty(key))
-                throw new ArgumentNullException("key");
-
-            var list = obj.GetValue(key) as IList<TOut>;
-
-            if (list != null)
-                return list;
-
-            var enumerable = obj.GetValue(key) as IEnumerable<TOut>;
-
-            return enumerable == null ? new List<TOut>() : enumerable.ToList();
+            return SharedExtensions.GetList<TOut>(obj, key);
         }
 
         /// <summary>

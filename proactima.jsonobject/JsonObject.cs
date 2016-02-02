@@ -6,9 +6,8 @@ using proactima.jsonobject.common;
 
 namespace proactima.jsonobject
 {
-    public partial class JsonObject : Dictionary<string, object>
+    public partial class JsonObject : Dictionary<string, object>, IReadOnlyDictionary<string, object>
     {
-
         public JsonObject()
         {
         }
@@ -97,7 +96,7 @@ namespace proactima.jsonobject
                 switch (type)
                 {
                     case "object":
-                        json.Add(key, FromJObject((JObject) valuePair.Value));
+                        json.Add(key, FromJObject((JObject)valuePair.Value, keepGeneratedContent));
                         break;
                     case "array":
                         var array = (JArray) valuePair.Value;
@@ -111,42 +110,51 @@ namespace proactima.jsonobject
                         // is this array an object array or value array?
                         var isValues = array.First().GetType() == typeof (JValue);
                         if (isValues)
-                            json.Add(key, array.Select(t => t.ToObject<object>()).ToArray());
+                        {
+                            json.Add(key, array.Select(t => ReadValueByType(t.Type, t)).ToArray());
+                        }
                         else
                         {
-                            var children = (from JObject val in array select FromJObject(val)).ToList();
+                            var children = (from JObject val in array select FromJObject(val, keepGeneratedContent)).ToList();
                             json.Add(key, children);
                         }
                         break;
-                    case "boolean":
-                        json.Add(key, valuePair.Value.Value<Boolean>());
-                        break;
-                    case "int32":
-                    case "int64":
-                    case "integer":
-                    case "long":
-                        json.Add(key, valuePair.Value.Value<long>());
-                        break;
-                    case "float":
-                    case "decimal":
-                    case "double":
-                    case "number":
-                        json.Add(key, valuePair.Value.Value<decimal>());
-                        break;
-                    case "date":
-                    case "datetime":
-                        json.Add(key, valuePair.Value.Value<DateTime>());
-                        break;
                     default:
-                        var value = valuePair.Value.Value<string>();
-                        if (String.IsNullOrEmpty(value))
-                            value = string.Empty;
-                        json.Add(key, value); // consider testing for byte size here!
+                        json.Add(key, ReadValueByType(valuePair.Value.Type, valuePair.Value));
                         break;
                 }
             }
 
             return json;
+        }
+
+        private static object ReadValueByType(JTokenType currentType, IEnumerable<JToken> token)
+        {
+            switch (currentType.ToString().ToLowerInvariant())
+            {
+                case "null":
+                    return null;
+                case "boolean":
+                    return token.Value<Boolean>();
+                case "int32":
+                case "int64":
+                case "integer":
+                case "long":
+                    return token.Value<long>();
+                case "float":
+                case "decimal":
+                case "double":
+                case "number":
+                    return token.Value<decimal>();
+                case "date":
+                case "datetime":
+                    return token.Value<DateTime>();
+                default:
+                    var value = token.Value<string>();
+                    if (String.IsNullOrEmpty(value))
+                        value = string.Empty;
+                    return value;
+            }
         }
 
 
